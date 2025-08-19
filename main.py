@@ -3,6 +3,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 import plotly.express as px
 import plotly.graph_objects as go
+from streamlit_option_menu import option_menu
 from components.database import DatabaseManager
 from components.chat_analysis import ChatAnalyzer
 from components.chatbot import ChatBot
@@ -527,3 +528,4 @@ def show_satisfaction_analysis():
 
 if __name__ == "__main__":
     main()
+
