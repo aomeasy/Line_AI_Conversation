@@ -2,10 +2,11 @@ streamlit>=1.32
 pandas>=2.2.2
 numpy>=2.0.0
 plotly==5.17.0
-sqlalchemy==2.0.21
+sqlalchemy>=2.0.34
 pymysql==1.1.0
 requests==2.31.0
 python-dateutil>=2.8.2
 pytz>=2023.3
 cryptography>=41.0.4
 typing-extensions>=4.8.0
+
