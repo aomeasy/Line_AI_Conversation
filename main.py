@@ -94,9 +94,7 @@ def main():
             index=0
         )
 
-        st.title("AI Conversation Analyzer")
-        st.write("✅ เชื่อมต่อ TiDB สำเร็จ")
-        st.write("✅ โหลดโมดูลสำเร็จ")
+
     
         # Quick stats
         st.subheader("สถิติด่วน")
@@ -539,5 +537,6 @@ def show_satisfaction_analysis():
 if __name__ == "__main__":
 
     main()
+
 
 
