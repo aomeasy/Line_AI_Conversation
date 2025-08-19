@@ -3,6 +3,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 import plotly.express as px
 import plotly.graph_objects as go
+from streamlit_option_menu import option_menu
 from components.database import DatabaseManager
 from components.chat_analysis import ChatAnalyzer
 from components.chatbot import ChatBot
@@ -16,179 +17,44 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS for modern theme
+# Custom CSS for gray theme
 st.markdown("""
 <style>
-    /* Import modern fonts */
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-    
-    /* Global styles */
-    .main {
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-    }
-    
-    /* Modern header with glassmorphism */
     .main-header {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        backdrop-filter: blur(10px);
-        padding: 2rem;
-        border-radius: 20px;
+        background: linear-gradient(90deg, #4a5568, #718096);
+        padding: 1rem;
+        border-radius: 10px;
         color: white;
         text-align: center;
         margin-bottom: 2rem;
-        box-shadow: 0 8px 32px rgba(102, 126, 234, 0.3);
-        border: 1px solid rgba(255, 255, 255, 0.1);
     }
-    
-    /* Enhanced metric cards */
     .metric-card {
-        background: linear-gradient(145deg, #ffffff 0%, #f8fafc 100%);
-        border: 1px solid rgba(226, 232, 240, 0.8);
-        border-radius: 16px;
-        padding: 1.5rem;
-        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
-        transition: all 0.3s ease;
-        position: relative;
-        overflow: hidden;
-    }
-    
-    .metric-card:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
-    }
-    
-    .metric-card::before {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        height: 3px;
-        background: linear-gradient(90deg, #667eea, #764ba2);
-        border-radius: 16px 16px 0 0;
-    }
-    
-    /* Modern sidebar */
-    .sidebar-modern {
-        background: linear-gradient(180deg, #f8fafc 0%, #e2e8f0 100%);
-        border-radius: 20px;
-        padding: 1.5rem;
-        margin-bottom: 1.5rem;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-        border: 1px solid rgba(255, 255, 255, 0.2);
-        position: relative;
-        overflow: hidden;
-    }
-    
-    .sidebar-modern::before {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        height: 100%;
-        background: linear-gradient(45deg, rgba(102, 126, 234, 0.03) 0%, rgba(118, 75, 162, 0.03) 100%);
-        pointer-events: none;
-    }
-    
-    /* Logo container */
-    .logo-container {
-        text-align: center;
-        margin-bottom: 2rem;
+        background-color: #f7fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
         padding: 1rem;
-        background: linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(248, 250, 252, 0.9) 100%);
-        border-radius: 16px;
-        border: 1px solid rgba(226, 232, 240, 0.5);
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
-    
-    /* Navigation menu modern styling */
-    .nav-menu {
-        margin: 1.5rem 0;
-    }
-    
-    /* Quick stats modern cards */
-    .stats-card {
-        background: linear-gradient(135deg, #ffffff 0%, #f1f5f9 100%);
-        border-radius: 12px;
+    .sidebar-content {
+        background-color: #edf2f7;
         padding: 1rem;
-        margin-bottom: 0.8rem;
-        border: 1px solid rgba(226, 232, 240, 0.6);
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-        transition: all 0.2s ease;
+        border-radius: 10px;
+        margin-bottom: 1rem;
     }
-    
-    .stats-card:hover {
-        transform: translateX(4px);
-        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
-    }
-    
-    .stats-title {
-        font-size: 0.75rem;
-        font-weight: 500;
-        color: #64748b;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        margin-bottom: 0.25rem;
-    }
-    
-    .stats-value {
-        font-size: 1.5rem;
-        font-weight: 700;
-        color: #1e293b;
-        margin: 0;
-    }
-    
-    /* Chat messages */
     .chat-message {
-        background: linear-gradient(145deg, #f8fafc 0%, #ffffff 100%);
-        border-left: 4px solid #e2e8f0;
-        padding: 1rem;
-        margin: 0.8rem 0;
-        border-radius: 12px;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-        transition: all 0.2s ease;
+        background-color: #f8f9fa;
+        border-left: 4px solid #6c757d;
+        padding: 10px;
+        margin: 5px 0;
+        border-radius: 5px;
     }
-    
-    .chat-message:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-    }
-    
     .admin-message {
-        background: linear-gradient(145deg, #dbeafe 0%, #f0f9ff 100%);
-        border-left: 4px solid #3b82f6;
+        background-color: #e3f2fd;
+        border-left: 4px solid #2196f3;
     }
-    
     .customer-message {
-        background: linear-gradient(145deg, #fce7f3 0%, #fdf2f8 100%);
-        border-left: 4px solid #ec4899;
-    }
-    
-    /* Section dividers */
-    .section-divider {
-        height: 1px;
-        background: linear-gradient(90deg, transparent 0%, #e2e8f0 50%, transparent 100%);
-        margin: 1.5rem 0;
-    }
-    
-    /* Modern scrollbar */
-    ::-webkit-scrollbar {
-        width: 6px;
-    }
-    
-    ::-webkit-scrollbar-track {
-        background: #f1f5f9;
-        border-radius: 3px;
-    }
-    
-    ::-webkit-scrollbar-thumb {
-        background: linear-gradient(180deg, #cbd5e1 0%, #94a3b8 100%);
-        border-radius: 3px;
-    }
-    
-    ::-webkit-scrollbar-thumb:hover {
-        background: linear-gradient(180deg, #94a3b8 0%, #64748b 100%);
+        background-color: #f3e5f5;
+        border-left: 4px solid #9c27b0;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -215,11 +81,34 @@ def main():
         st.markdown('<div class="sidebar-content">', unsafe_allow_html=True)
         st.image("https://via.placeholder.com/200x80/4a5568/ffffff?text=LOGO", width=200)
         
-        # Navigation
-        page = st.selectbox(
-            "เลือกหน้า",
-            ["Dashboard", "Chat Analysis", "Conversation Logs", "AI Chatbot", "Settings"],
-            index=0
+
+        # Modern navigation (icon menu)
+        st.markdown("""
+        <style>
+        /* ปรับโทนสี ปุ่ม และสถานะ active ของเมนู */
+        .nav-link { 
+          font-weight: 600; 
+          color: #4a5568 !important; 
+          border-radius: 10px; 
+        }
+        .nav-link:hover { background: #e2e8f0 !important; }
+        .nav-link.active { background: #4a5568 !important; color: #fff !important; }
+        </style>
+        """, unsafe_allow_html=True)
+        
+        page = option_menu(
+            menu_title=None,
+            options=["Dashboard", "Chat Analysis", "Conversation Logs", "AI Chatbot", "Settings"],
+            icons=["speedometer2", "search", "chat-dots", "robot", "gear"],  # Bootstrap icons
+            menu_icon="cast",
+            default_index=0,
+            orientation="vertical",
+            styles={
+                "container": {"background-color": "transparent", "padding": "0rem"},
+                "icon": {"color": "#718096", "font-size": "1.1rem"},
+                "nav-link": {"font-size": "0.95rem", "margin": "4px", "padding": "10px 12px"},
+                "nav-link-selected": {"background-color": "#4a5568"},
+            }
         )
 
         # Quick stats
@@ -662,3 +551,4 @@ def show_satisfaction_analysis():
 
 if __name__ == "__main__":
     main()
+
