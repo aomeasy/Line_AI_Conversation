@@ -6,7 +6,6 @@ import plotly.graph_objects as go
 from components.database import DatabaseManager
 from components.chat_analysis import ChatAnalyzer
 from components.chatbot import ChatBot
-from utils.auth import check_admin_auth
 from utils.config import *
 
 # Page configuration
@@ -61,18 +60,12 @@ st.markdown("""
 
 def main():
     # Initialize session state
-    if 'authenticated' not in st.session_state:
-        st.session_state.authenticated = False
     if 'db_manager' not in st.session_state:
         st.session_state.db_manager = DatabaseManager()
     if 'chat_analyzer' not in st.session_state:
         st.session_state.chat_analyzer = ChatAnalyzer(st.session_state.db_manager)
     if 'chatbot' not in st.session_state:
         st.session_state.chatbot = ChatBot()
-
-    # Authentication check
-    if not check_admin_auth():
-        return
 
     # Header
     st.markdown("""
@@ -94,8 +87,6 @@ def main():
             index=0
         )
 
-
-    
         # Quick stats
         st.subheader("สถิติด่วน")
         try:
@@ -535,6 +526,4 @@ def show_satisfaction_analysis():
         st.error(f"เกิดข้อผิดพลาดในการวิเคราะห์ความพึงพอใจ: {str(e)}")
 
 if __name__ == "__main__":
-
     main()
- 
