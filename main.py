@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import requests
 from datetime import datetime, timedelta
 import plotly.express as px
 import plotly.graph_objects as go
@@ -8,6 +9,7 @@ from components.chat_analysis import ChatAnalyzer
 from components.chatbot import ChatBot
 from utils.auth import check_admin_auth
 from utils.config import *
+
 
 # Page configuration
 st.set_page_config(
@@ -59,7 +61,53 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+def check_database():
+    try:
+        # สมมติว่ามีฟังก์ชันเชื่อม DB
+        # db_manager.test_connection()
+        return True, None
+    except Exception as e:
+        return False, str(e)
+
+def check_embedding_api():
+    try:
+        r = requests.get("http://209.15.123.47:11434/api/embedding/health")  # endpoint สมมติ
+        if r.status_code == 200:
+            return True, "nomic-embed-text:latest"
+        else:
+            return False, None
+    except Exception as e:
+        return False, str(e)
+        
+def check_chat_api():
+    try:
+        r = requests.get("http://209.15.123.47:11434/api/generate/health")  # endpoint สมมติ
+        if r.status_code == 200:
+            return True, "Qwen3:14b"
+        else:
+            return False, None
+    except Exception as e:
+        return False, str(e)
+        
+def render_status_card(title, ok, model=None, error=None):
+    color = "#1e5631" if ok else "#8b0000"
+    status_text = "🟢 พร้อมใช้งาน" if ok else "🔴 ไม่พร้อมใช้งาน"
+
+    html = f"""
+    <div style="background-color:{color};padding:15px;border-radius:12px;color:white;">
+        <h4>{title}</h4>
+        <p>{status_text}</p>
+    """
+    if model:
+        html += f"<p><b>Model:</b> {model}</p>"
+    if error and not ok:
+        html += f"<p style='font-size:12px;color:#ffcccc;'>{error}</p>"
+    html += "</div>"
+
+    st.markdown(html, unsafe_allow_html=True)
+
 def main():
+    st.title("📊 สถานะระบบ")
     # Initialize session state
     if 'authenticated' not in st.session_state:
         st.session_state.authenticated = False
@@ -69,6 +117,23 @@ def main():
         st.session_state.chat_analyzer = ChatAnalyzer(st.session_state.db_manager)
     if 'chatbot' not in st.session_state:
         st.session_state.chatbot = ChatBot()
+        
+    col1, col2, col3 = st.columns(3)
+
+    # Database
+    db_ok, db_err = check_database()
+    with col1:
+        render_status_card("Database", db_ok, error=db_err)
+
+    # Embedding API
+    emb_ok, emb_info = check_embedding_api()
+    with col2:
+        render_status_card("Embedding API", emb_ok, model=emb_info if emb_ok else None, error=None if emb_ok else emb_info)
+
+    # Chat API
+    chat_ok, chat_info = check_chat_api()
+    with col3:
+        render_status_card("Chat API", chat_ok, model=chat_info if chat_ok else None, error=None if chat_ok else chat_info)
 
     # Authentication check
     if not check_admin_auth():
@@ -537,6 +602,7 @@ def show_satisfaction_analysis():
 if __name__ == "__main__":
 
     main()
+
 
 
 
