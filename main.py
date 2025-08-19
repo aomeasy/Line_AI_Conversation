@@ -81,11 +81,34 @@ def main():
         st.markdown('<div class="sidebar-content">', unsafe_allow_html=True)
         st.image("https://via.placeholder.com/200x80/4a5568/ffffff?text=LOGO", width=200)
         
-        # Navigation
-        page = st.selectbox(
-            "เลือกหน้า",
-            ["Dashboard", "Chat Analysis", "Conversation Logs", "AI Chatbot", "Settings"],
-            index=0
+
+        # Modern navigation (icon menu)
+        st.markdown("""
+        <style>
+        /* ปรับโทนสี ปุ่ม และสถานะ active ของเมนู */
+        .nav-link { 
+          font-weight: 600; 
+          color: #4a5568 !important; 
+          border-radius: 10px; 
+        }
+        .nav-link:hover { background: #e2e8f0 !important; }
+        .nav-link.active { background: #4a5568 !important; color: #fff !important; }
+        </style>
+        """, unsafe_allow_html=True)
+        
+        page = option_menu(
+            menu_title=None,
+            options=["Dashboard", "Chat Analysis", "Conversation Logs", "AI Chatbot", "Settings"],
+            icons=["speedometer2", "search", "chat-dots", "robot", "gear"],  # Bootstrap icons
+            menu_icon="cast",
+            default_index=0,
+            orientation="vertical",
+            styles={
+                "container": {"background-color": "transparent", "padding": "0rem"},
+                "icon": {"color": "#718096", "font-size": "1.1rem"},
+                "nav-link": {"font-size": "0.95rem", "margin": "4px", "padding": "10px 12px"},
+                "nav-link-selected": {"background-color": "#4a5568"},
+            }
         )
 
         # Quick stats
@@ -528,4 +551,5 @@ def show_satisfaction_analysis():
 
 if __name__ == "__main__":
     main()
+
 
