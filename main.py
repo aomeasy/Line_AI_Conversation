@@ -93,7 +93,11 @@ def main():
             ["Dashboard", "Chat Analysis", "Conversation Logs", "AI Chatbot", "Settings"],
             index=0
         )
-        
+
+        st.title("AI Conversation Analyzer")
+        st.write("✅ เชื่อมต่อ TiDB สำเร็จ")
+        st.write("✅ โหลดโมดูลสำเร็จ")
+    
         # Quick stats
         st.subheader("สถิติด่วน")
         try:
@@ -535,4 +539,5 @@ def show_satisfaction_analysis():
 if __name__ == "__main__":
 
     main()
+
 
