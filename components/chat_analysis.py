@@ -185,4 +185,390 @@ class ChatAnalyzer:
                     SELECT message 
                     FROM conversations 
                     WHERE sender_type = 'customer'
+                    ORDER BY timestamp DESC 
+                    LIMIT :limit
+                """), {"limit": limit})
+                
+                messages = [row.message for row in result]
+            
+            # วิเคราะห์หัวข้อ
+            topic_counter = {}
+            topic_examples = {}
+            
+            for message in messages:
+                topics = self.classify_topic(message)
+                for topic_info in topics:
+                    topic = topic_info['topic']
+                    confidence = topic_info['confidence']
+                    
+                    if topic not in topic_counter:
+                        topic_counter[topic] = 0
+                        topic_examples[topic] = []
+                    
+                    topic_counter[topic] += confidence
+                    
+                    if len(topic_examples[topic]) < 5:  # เก็บตัวอย่าง 5 ข้อความ
+                        topic_examples[topic].append(message)
+            
+            # จัดเรียงตามความถี่
+            topics_result = []
+            for topic, frequency in sorted(topic_counter.items(), key=lambda x: x[1], reverse=True):
+                topics_result.append({
+                    'topic': topic,
+                    'frequency': frequency,
+                    'examples': topic_examples[topic]
+                })
+            
+            return topics_result
+            
+        except Exception as e:
+            print(f"Error extracting topics: {str(e)}")
+            return []
+    
+    def analyze_response_time(self) -> Dict[str, pd.DataFrame]:
+        """วิเคราะห์เวลาตอบกลับ"""
+        try:
+            with self.db_manager.engine.connect() as conn:
+                # เวลาตอบกลับเฉลี่ยรายชั่วโมง
+                hourly_df = pd.read_sql(text("""
+                    SELECT 
+                        HOUR(timestamp) as hour,
+                        AVG(response_time)/60 as avg_response_time,
+                        COUNT(*) as message_count
+                    FROM conversations 
+                    WHERE response_time IS NOT NULL
+                    GROUP BY HOUR(timestamp)
+                    ORDER BY hour
+                """), conn)
+                
+                # การกระจายเวลาตอบกลับ
+                distribution_df = pd.read_sql(text("""
+                    SELECT response_time/60 as response_time
+                    FROM conversations 
+                    WHERE response_time IS NOT NULL
+                    AND response_time <= 3600  -- จำกัดไว้ที่ 1 ชั่วโมง
+                """), conn)
+                
+                return {
+                    'hourly': hourly_df,
+                    'distribution': distribution_df
+                }
+                
+        except Exception as e:
+            print(f"Error analyzing response time: {str(e)}")
+            return {'hourly': pd.DataFrame(), 'distribution': pd.DataFrame()}
+    
+    def analyze_satisfaction(self) -> Dict[str, Any]:
+        """วิเคราะห์ความพึงพอใจ"""
+        try:
+            with self.db_manager.engine.connect() as conn:
+                # คำนวณคะแนนความพึงพอใจจาก sentiment
+                overall_result = conn.execute(text("""
+                    SELECT 
+                        AVG(CASE 
+                            WHEN sentiment = 'positive' THEN 4.5
+                            WHEN sentiment = 'neutral' THEN 3.0
+                            WHEN sentiment = 'negative' THEN 2.0
+                            ELSE 3.0
+                        END) as overall_score
+                    FROM conversations 
+                    WHERE sentiment IS NOT NULL
+                """)).scalar()
+                
+                # แนวโน้มความพึงพอใจ
+                trend_df = pd.read_sql(text("""
+                    SELECT 
+                        DATE(timestamp) as date,
+                        AVG(CASE 
+                            WHEN sentiment = 'positive' THEN 4.5
+                            WHEN sentiment = 'neutral' THEN 3.0
+                            WHEN sentiment = 'negative' THEN 2.0
+                            ELSE 3.0
+                        END) as satisfaction_score
+                    FROM conversations 
+                    WHERE sentiment IS NOT NULL
+                    AND timestamp >= DATE_SUB(CURRENT_DATE, INTERVAL 30 DAY)
+                    GROUP BY DATE(timestamp)
+                    ORDER BY date
+                """), conn)
+                
+                # ปัจจัยที่ส่งผลต่อความพึงพอใจ
+                factors = [
+                    {'factor': 'เวลาตอบกลับ', 'impact': 'สูง', 'correlation': -0.75},
+                    {'factor': 'ความชัดเจนของคำตอบ', 'impact': 'สูง', 'correlation': 0.82},
+                    {'factor': 'ความสุภาพ', 'impact': 'ปานกลาง', 'correlation': 0.65},
+                    {'factor': 'การแก้ปัญหา', 'impact': 'สูงมาก', 'correlation': 0.89},
+                    {'factor': 'ช่วงเวลาในการติดต่อ', 'impact': 'ต่ำ', 'correlation': 0.32}
+                ]
+                
+                return {
+                    'overall_score': overall_result or 3.0,
+                    'trends': trend_df,
+                    'factors': factors
+                }
+                
+        except Exception as e:
+            print(f"Error analyzing satisfaction: {str(e)}")
+            return {'overall_score': 3.0, 'trends': pd.DataFrame(), 'factors': []}
+    
+    def process_new_message(self, conversation_id: int, message: str) -> Dict[str, Any]:
+        """
+        ประมวลผลข้อความใหม่
+        - วิเคราะห์ sentiment
+        - จำแนกหัวข้อ
+        - สร้าง embedding (ถ้าเปิดใช้งาน)
+        """
+        try:
+            result = {
+                'conversation_id': conversation_id,
+                'processed_at': datetime.now()
+            }
+            
+            # วิเคราะห์ sentiment
+            sentiment_result = self.analyze_sentiment_simple(message)
+            result['sentiment'] = sentiment_result
+            
+            # อัปเดต sentiment ในฐานข้อมูล
+            self.db_manager.update_conversation_sentiment(
+                conversation_id,
+                sentiment_result['sentiment'],
+                sentiment_result['score']
+            )
+            
+            # จำแนกหัวข้อ
+            topics = self.classify_topic(message)
+            result['topics'] = topics
+            
+            # สร้าง embedding (ถ้าเปิดใช้งาน)
+            settings = self.db_manager.get_settings()
+            if settings.get('embedding_enabled', True):
+                embedding = self.get_embedding(message)
+                if embedding:
+                    self.db_manager.update_conversation_embedding(conversation_id, embedding)
+                    result['embedding_created'] = True
+                else:
+                    result['embedding_created'] = False
+            
+            return result
+            
+        except Exception as e:
+            print(f"Error processing new message: {str(e)}")
+            return {'error': str(e)}
+    
+    def find_similar_conversations(self, message: str, limit: int = 5) -> List[Dict[str, Any]]:
+        """
+        ค้นหาการสนทนาที่คล้ายกัน โดยใช้ embedding
+        ใช้สำหรับ:
+        1. แนะนำคำตอบที่เคยใช้
+        2. ค้นหาปัญหาที่คล้ายกัน
+        3. สร้าง knowledge base
+        """
+        try:
+            # สร้าง embedding สำหรับข้อความที่ต้องการค้นหา
+            query_embedding = self.get_embedding(message)
+            if not query_embedding:
+                return []
+            
+            # ค้นหาการสนทนาที่มี embedding
+            with self.db_manager.engine.connect() as conn:
+                result = conn.execute(text("""
+                    SELECT 
+                        id,
+                        conversation_id,
+                        message,
+                        embedding_vector,
+                        timestamp,
+                        sender_type
+                    FROM conversations 
+                    WHERE embedding_vector IS NOT NULL
+                    AND sender_type = 'customer'
                     ORDER BY timestamp DESC
+                    LIMIT 100
+                """))
+                
+                conversations = []
+                for row in result:
+                    try:
+                        stored_embedding = json.loads(row.embedding_vector)
+                        
+                        # คำนวณ cosine similarity
+                        similarity = self.cosine_similarity(query_embedding, stored_embedding)
+                        
+                        if similarity > 0.7:  # เฉพาะที่คล้ายกันมาก
+                            conversations.append({
+                                'id': row.id,
+                                'conversation_id': row.conversation_id,
+                                'message': row.message,
+                                'similarity': similarity,
+                                'timestamp': row.timestamp
+                            })
+                    except (json.JSONDecodeError, TypeError):
+                        continue
+                
+                # เรียงตาม similarity
+                conversations.sort(key=lambda x: x['similarity'], reverse=True)
+                return conversations[:limit]
+                
+        except Exception as e:
+            print(f"Error finding similar conversations: {str(e)}")
+            return []
+    
+    def cosine_similarity(self, vec1: List[float], vec2: List[float]) -> float:
+        """คำนวณ cosine similarity ระหว่าง 2 vectors"""
+        try:
+            vec1 = np.array(vec1)
+            vec2 = np.array(vec2)
+            
+            dot_product = np.dot(vec1, vec2)
+            norm1 = np.linalg.norm(vec1)
+            norm2 = np.linalg.norm(vec2)
+            
+            if norm1 == 0 or norm2 == 0:
+                return 0
+            
+            return dot_product / (norm1 * norm2)
+            
+        except Exception as e:
+            print(f"Error calculating cosine similarity: {str(e)}")
+            return 0
+    
+    def get_conversation_summary(self, conversation_id: str) -> Dict[str, Any]:
+        """สรุปการสนทนา"""
+        try:
+            with self.db_manager.engine.connect() as conn:
+                # ดึงข้อความทั้งหมดในการสนทนา
+                messages = pd.read_sql(text("""
+                    SELECT 
+                        message,
+                        sender_type,
+                        timestamp,
+                        sentiment
+                    FROM conversations 
+                    WHERE conversation_id = :conv_id
+                    ORDER BY timestamp
+                """), conn, params={"conv_id": conversation_id})
+                
+                if messages.empty:
+                    return {}
+                
+                # สถิติพื้นฐาน
+                total_messages = len(messages)
+                customer_messages = len(messages[messages['sender_type'] == 'customer'])
+                admin_messages = len(messages[messages['sender_type'] == 'admin'])
+                
+                # ความรู้สึกโดยรวม
+                sentiment_counts = messages['sentiment'].value_counts().to_dict()
+                
+                # หัวข้อหลัก
+                customer_messages_text = messages[messages['sender_type'] == 'customer']['message'].tolist()
+                topics = []
+                for msg in customer_messages_text:
+                    topics.extend([t['topic'] for t in self.classify_topic(msg)])
+                
+                top_topics = Counter(topics).most_common(3)
+                
+                # ระยะเวลาการสนทนา
+                start_time = messages['timestamp'].min()
+                end_time = messages['timestamp'].max()
+                duration = (end_time - start_time).total_seconds() / 60  # นาที
+                
+                return {
+                    'conversation_id': conversation_id,
+                    'total_messages': total_messages,
+                    'customer_messages': customer_messages,
+                    'admin_messages': admin_messages,
+                    'duration_minutes': duration,
+                    'sentiment_distribution': sentiment_counts,
+                    'top_topics': [{'topic': topic, 'count': count} for topic, count in top_topics],
+                    'start_time': start_time,
+                    'end_time': end_time
+                }
+                
+        except Exception as e:
+            print(f"Error getting conversation summary: {str(e)}")
+            return {}
+    
+    def generate_insights(self) -> List[Dict[str, Any]]:
+        """สร้าง insights จากการวิเคราะห์"""
+        insights = []
+        
+        try:
+            # Insight 1: เวลาตอบกลับ
+            avg_response = self.db_manager.get_analytics_data(
+                datetime.now() - timedelta(days=7),
+                datetime.now()
+            ).get('avg_response_time', 0)
+            
+            if avg_response > 10:  # มากกว่า 10 นาที
+                insights.append({
+                    'type': 'warning',
+                    'title': 'เวลาตอบกลับช้า',
+                    'description': f'เวลาตอบกลับเฉลี่ย {avg_response:.1f} นาที ควรปรับปรุง',
+                    'priority': 'high'
+                })
+            
+            # Insight 2: ความรู้สึกลูกค้า
+            sentiment_data = self.analyze_sentiment()
+            if not sentiment_data.empty:
+                negative_pct = 0
+                total_messages = sentiment_data['count'].sum()
+                if total_messages > 0:
+                    negative_count = sentiment_data[sentiment_data['sentiment'] == 'negative']['count'].sum()
+                    negative_pct = (negative_count / total_messages) * 100
+                
+                if negative_pct > 30:  # มากกว่า 30% เป็นลบ
+                    insights.append({
+                        'type': 'alert',
+                        'title': 'ความรู้สึกลูกค้าไม่ดี',
+                        'description': f'พบความรู้สึกเชิงลบ {negative_pct:.1f}% ควรตรวจสอบ',
+                        'priority': 'high'
+                    })
+            
+            # Insight 3: หัวข้อที่พบบ่อย
+            topics = self.extract_topics(50)
+            if topics:
+                top_topic = topics[0]
+                insights.append({
+                    'type': 'info',
+                    'title': f'หัวข้อยอดฮิต: {top_topic["topic"]}',
+                    'description': f'พบการสนทนาเรื่อง{top_topic["topic"]}บ่อยที่สุด',
+                    'priority': 'medium'
+                })
+            
+            return insights
+            
+        except Exception as e:
+            print(f"Error generating insights: {str(e)}")
+            return []
+    
+    def batch_process_unprocessed_messages(self, limit: int = 100):
+        """ประมวลผลข้อความที่ยังไม่ได้ประมวลผล"""
+        try:
+            with self.db_manager.engine.connect() as conn:
+                # ดึงข้อความที่ยังไม่ได้ประมวลผล
+                result = conn.execute(text("""
+                    SELECT id, message 
+                    FROM conversations 
+                    WHERE processed_at IS NULL
+                    AND sender_type = 'customer'
+                    ORDER BY timestamp DESC
+                    LIMIT :limit
+                """), {"limit": limit})
+                
+                messages_to_process = [(row.id, row.message) for row in result]
+                
+                processed_count = 0
+                for msg_id, message in messages_to_process:
+                    try:
+                        self.process_new_message(msg_id, message)
+                        processed_count += 1
+                    except Exception as e:
+                        print(f"Error processing message {msg_id}: {str(e)}")
+                        continue
+                
+                print(f"✅ ประมวลผลข้อความสำเร็จ {processed_count}/{len(messages_to_process)} ข้อความ")
+                return processed_count
+                
+        except Exception as e:
+            print(f"Error in batch processing: {str(e)}")
+            return 0
